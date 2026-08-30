@@ -38,7 +38,7 @@ Measured 2026-08-30 on one GB10, same fixed runtime and boot config as the K2 ro
 | 4-workload decode mean, 64k, MTP k=2 | 16.74 tok/s | **17.19 tok/s** (+2.7%) |
 | MTP acceptance, code / math | 0.62 / 0.67 | 0.69 / 0.76 |
 | 8,192-token generation, 32k prompt | pass | pass |
-| sixcat 0.5.1 (think-on, 64k) | pending | pending |
+| sixcat 0.5.1 (think-on, 64k) | pending rerun (container run: 84.17) | **83.33**, 120/120, flagged on the same two items every run hits |
 | KLD vs BF16 teacher | pending | pending |
 
 Full tables: [`docs/MEASUREMENTS.md`](docs/MEASUREMENTS.md).

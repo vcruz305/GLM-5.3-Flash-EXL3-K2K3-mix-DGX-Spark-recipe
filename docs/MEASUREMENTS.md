@@ -52,7 +52,11 @@ seen on this box.
 
 ## sixcat 0.5.1 (think-on, 64k)
 
-pending
+Mix: **overall 83.33** (knowledge 65, math 100, truth 85, instruct 75, code 85,
+tools 90), 120/120 completed, no faults, suite 16.47 tok/s over the four
+categories that report throughput. K2 on the same fixed runtime: pending rerun
+(the earlier K2 84.17 was measured on the container runtime). Full receipt and
+the item-level reading: [`SIXCAT.md`](SIXCAT.md).
 
 ## KLD against the BF16 teacher
 

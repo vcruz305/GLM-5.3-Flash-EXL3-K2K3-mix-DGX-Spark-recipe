@@ -39,6 +39,7 @@ Measured 2026-08-30 on one GB10, same fixed runtime and boot config as the K2 ro
 | MTP acceptance, code / math | 0.62 / 0.67 | 0.69 / 0.76 |
 | 8,192-token generation, 32k prompt | pass | pass |
 | sixcat 0.5.1 (think-on, 64k), same runtime | 84.17 | 83.33 (one item apart; suite noise) |
+| long context | 262,144 boots; prompts verified to 163,479 tokens (see the [K2 recipe](https://github.com/vcruz305/GLM-5.3-Flash-EXL3-K2-DGX-Spark-recipe#long-context-measured-ceiling-2026-08-31)); >163k wedge under investigation | 256k run pending (smaller KV pool: 337k tokens at 64k util 0.91) |
 | KLD vs BF16 teacher (512 contexts, 1.05M positions) | 0.3346 nats, top-1 0.788 | **0.3121 nats, top-1 0.795** (lower on 505/512 contexts; paired -0.0225, CI [0.0207, 0.0243]) |
 
 Full tables: [`docs/MEASUREMENTS.md`](docs/MEASUREMENTS.md).

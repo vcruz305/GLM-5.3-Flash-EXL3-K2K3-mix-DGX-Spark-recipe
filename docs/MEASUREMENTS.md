@@ -29,6 +29,7 @@ allocated at K3, and the same per-layer `bits` value feeds the fused kernel's
 | 64-token prompt, 4,096-token generation | pass | pass |
 | 64-token prompt, 8,192-token generation | pass | pass |
 | 32,000-token prompt | pass | pass |
+| eager soak with the K-pool detector, 12,288 generated tokens | 57,551 decode tail updates, 0 out of bounds | 60,551 decode tail updates, 0 out of bounds |
 
 ## Decode speed: four-workload ladder at 64k
 

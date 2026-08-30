@@ -54,8 +54,9 @@ seen on this box.
 
 Mix: **overall 83.33** (knowledge 65, math 100, truth 85, instruct 75, code 85,
 tools 90), 120/120 completed, no faults, suite 16.47 tok/s over the four
-categories that report throughput. K2 on the same fixed runtime: pending rerun
-(the earlier K2 84.17 was measured on the container runtime). Full receipt and
+categories that report throughput. K2 on the same fixed runtime: **overall 84.17** (knowledge 70, math 100, truth
+80, instruct 70, code 90, tools 95), 120/120, no faults. K2 and mix are one item
+apart, which is this suite's noise floor at 20 items per category. Full receipt and
 the item-level reading: [`SIXCAT.md`](SIXCAT.md).
 
 ## KLD against the BF16 teacher

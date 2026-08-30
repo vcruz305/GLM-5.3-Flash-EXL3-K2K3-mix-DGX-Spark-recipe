@@ -25,18 +25,26 @@ Suite throughput (four categories, 80 items): 57,825 ctok in 3,510 s,
 
 | | K2 (container runtime, 2026-08-29) | K2 (fixed runtime, rerun) | K2/K3 mix |
 |---|---:|---:|---:|
-| knowledge | 65.0 | pending | 65.0 |
-| math | 100.0 | pending | 100.0 |
-| truth | 85.0 | pending | 85.0 |
-| instruct | 75.0 | pending | 75.0 |
-| code | 90.0 | pending | 85.0 |
-| tools | 90.0 | pending | 90.0 |
-| overall | 84.17 | pending | 83.33 |
+| knowledge | 65.0 | 70.0 | 65.0 |
+| math | 100.0 | 100.0 | 100.0 |
+| truth | 85.0 | 80.0 | 85.0 |
+| instruct | 75.0 | 70.0 | 75.0 |
+| code | 90.0 | 90.0 | 85.0 |
+| tools | 90.0 | 95.0 | 90.0 |
+| overall | 84.17 | **84.17** | **83.33** |
 
 The two budget-hitting items are the same ones every run on this model hits:
 `mmlu:8` (8,192-token budget, empty answer; also reported failing on K2 by an
 independent operator) and `ifeval:1300` (32,768-token loop, the K-pool
 reproducer prompt). The code loop failure is one 28,853-token item. With 20
-items per category at temperature 1.0, one item is five points, so the 0.83
-overall gap to the K2 container run is a single item of run-to-run noise. The
-K2 rerun on the same fixed runtime is the paired comparison.
+items per category at temperature 1.0, one item is five points. The paired
+comparison on the same fixed runtime is K2 84.17 against mix 83.33: one item.
+K2's own two runs, on different runtimes, also differ by one item in four
+categories (knowledge +5, truth -5, instruct -5, tools +5) while landing on the
+same overall; that is the size of this suite's noise. On 120 items sixcat cannot
+resolve a K2-vs-mix difference; the KLD panel (1,048,064 positions per
+checkpoint) is the measurement for that, see [`KLD.md`](KLD.md).
+
+K2 fixed-runtime receipt: knowledge 70 (1 truncated/empty: `mmlu:8`), math 100,
+truth 80, instruct 70 (1 truncated, 1 loop: `ifeval:1300`), code 90, tools 95;
+suite 16.48 tok/s over 62,768 ctok in 3,808 s.

@@ -39,7 +39,7 @@ Measured 2026-08-30 on one GB10, same fixed runtime and boot config as the K2 ro
 | MTP acceptance, code / math | 0.62 / 0.67 | 0.69 / 0.76 |
 | 8,192-token generation, 32k prompt | pass | pass |
 | sixcat 0.5.1 (think-on, 64k), same runtime | 84.17 | 83.33 (one item apart; suite noise) |
-| KLD vs BF16 teacher | pending | pending |
+| KLD vs BF16 teacher (512 contexts, 1.05M positions) | 0.3346 nats, top-1 0.788 | **0.3121 nats, top-1 0.795** (lower on 505/512 contexts; paired -0.0225, CI [0.0207, 0.0243]) |
 
 Full tables: [`docs/MEASUREMENTS.md`](docs/MEASUREMENTS.md).
 

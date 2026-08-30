@@ -62,4 +62,17 @@ the item-level reading: [`SIXCAT.md`](SIXCAT.md).
 
 ## KLD against the BF16 teacher
 
-pending; see [`KLD.md`](KLD.md).
+Full-vocab KL(BF16 || candidate) on the fidelity suite's 512 sealed 2048-token
+contexts, 1,048,064 positions each, captured on the serving path.
+
+| | K2 | mix |
+|---|---:|---:|
+| token-mean KLD | 0.3346 | **0.3121** |
+| 95% CI | [0.320, 0.349] | [0.299, 0.325] |
+| median | 0.117 | 0.106 |
+| p99 | 3.33 | 3.13 |
+| top-1 agreement | 0.788 | **0.795** |
+
+Paired per context: mix lower by 0.0225 nats (CI [0.0207, 0.0243], t = 24.4),
+lower on 505 of 512 contexts; top-1 +0.0071 (CI [+0.0065, +0.0077]). Method,
+scorer validation and the full analysis in [`KLD.md`](KLD.md).

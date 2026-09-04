@@ -37,7 +37,24 @@ MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
 if [[ -z "${GPU_MEM_UTIL:-}" ]]; then
   if (( MAX_MODEL_LEN >= 65536 )); then GPU_MEM_UTIL=0.91; else GPU_MEM_UTIL=0.87; fi
 fi
-KV_CACHE_MEMORY="${KV_CACHE_MEMORY:-}"
+# The sparse indexer's per-chunk logits allocations grow with the prefix as
+# chunked prefill advances. On GB10 unified memory cudaMalloc never fails, so
+# the caching allocator never reuses freed blocks and ratchets reserved memory
+# until host RAM is gone -- prefill livelocks past roughly 200k tokens with
+# the engine silent and /health still returning 200. expandable_segments lets
+# the allocator reuse that space. (Replay-validated alternative:
+# VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=64, which shrinks and equalizes sub-chunk
+# size so blocks get reused; not the default here.)
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+
+# KV_CACHE_MEMORY_BYTES pins the KV pool to an exact byte count instead of the
+# utilization-derived pool (--gpu-memory-utilization). 3221225472 (3 GiB) is
+# the single-request 262k-token configuration used in the 2026-09-01 258k
+# verification (349,525 fp8 KV tokens, enough for one 262,144-token
+# request). The utilization-derived pool (leave this unset) is for
+# multi-request serving. KV_CACHE_MEMORY is kept as a backwards-compatible
+# alias; vLLM wants a bare integer byte count, not "3GiB".
+KV_CACHE_MEMORY_BYTES="${KV_CACHE_MEMORY_BYTES:-${KV_CACHE_MEMORY:-}}"
 MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-2048}"
 MAX_NUM_SEQS="${MAX_NUM_SEQS:-1}"
 SPEC_METHOD="${SPEC_METHOD:-mtp}"
@@ -57,6 +74,27 @@ ENFORCE_EAGER="${ENFORCE_EAGER:-0}"
 CHAT_TEMPLATE="${CHAT_TEMPLATE:-${MODEL_DIR}/chat_template.jinja}"
 SERVED_NAME="${SERVED_NAME:-GLM-5.3-Flash-EXL3}"
 LOAD_FORMAT="${LOAD_FORMAT:-auto}"
+LONG_PREFILL_THRESHOLD="${LONG_PREFILL_THRESHOLD:-1024}"
+VLLM_EXL3_MOE_KERNEL="${VLLM_EXL3_MOE_KERNEL:-native}"
+export VLLM_EXL3_MOE_KERNEL
+
+# Parallel NVMe pre-warm: saturates storage controller across 8 workers (91 GiB in ~22s)
+PREWARM_NVME="${PREWARM_NVME:-1}"
+if [[ "$PREWARM_NVME" == "1" ]] && [[ -d "$MODEL_DIR" ]]; then
+  echo "Pre-warming NVMe page cache with 8 parallel workers..."
+  python3 -c "
+import os, glob, concurrent.futures
+shards = glob.glob('$MODEL_DIR/model-*.safetensors')
+def r(f):
+    fd = os.open(f, os.O_RDONLY)
+    try:
+        while os.read(fd, 16*1024*1024): pass
+    finally: os.close(fd)
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+    list(ex.map(r, shards))
+" 2>/dev/null || true
+  echo "NVMe pre-warm complete."
+fi
 
 if [[ ! -f "$MODEL_DIR/config.json" ]]; then
   echo "missing $MODEL_DIR/config.json — run scripts/download_weights.sh"
@@ -165,8 +203,8 @@ if [[ "$ENFORCE_EAGER" == 1 ]]; then
   ARGS+=(--enforce-eager)
 fi
 
-if [[ -n "$KV_CACHE_MEMORY" ]]; then
-  ARGS+=(--kv-cache-memory "$KV_CACHE_MEMORY")
+if [[ -n "$KV_CACHE_MEMORY_BYTES" ]]; then
+  ARGS+=(--kv-cache-memory-bytes "$KV_CACHE_MEMORY_BYTES")
 else
   ARGS+=(--gpu-memory-utilization "$GPU_MEM_UTIL")
 fi
@@ -183,6 +221,12 @@ elif [[ "$SPEC_METHOD" == "dflash" ]]; then
   ARGS+=(--cudagraph-capture-sizes 1 2 4 8 16)
 fi
 
-echo "EXL3_FUSED_MOE=$EXL3_FUSED_MOE SPEC_METHOD=$SPEC_METHOD MAX_MODEL_LEN=$MAX_MODEL_LEN"
+# Opt-in torch profiler. With PROFILER_DIR set the server exposes POST /start_profile
+# and /stop_profile and writes Chrome traces under that directory. Off by default.
+if [[ -n "${LONG_PREFILL_THRESHOLD:-}" && "${LONG_PREFILL_THRESHOLD}" != "0" ]]; then
+  ARGS+=(--long-prefill-token-threshold "$LONG_PREFILL_THRESHOLD")
+fi
+
+echo "EXL3_FUSED_MOE=$EXL3_FUSED_MOE VLLM_EXL3_MOE_KERNEL=$VLLM_EXL3_MOE_KERNEL SPEC_METHOD=$SPEC_METHOD MAX_MODEL_LEN=$MAX_MODEL_LEN"
 echo "vllm ${ARGS[*]}"
 exec vllm "${ARGS[@]}"

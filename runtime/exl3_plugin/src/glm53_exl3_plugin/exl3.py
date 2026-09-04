@@ -1,13 +1,12 @@
-"""Substantially derived from Mia's AI Lab (@MiaAI-Lab), overlay/exl3.py in
+# SPDX-License-Identifier: Apache-2.0
+"""EXL3/MCG trellis quantization for GLM-5.3-Flash routed experts.
+
+Substantially derived from Mia's AI Lab (@MiaAI-Lab), overlay/exl3.py in
 GLM-5.3-Flash-EXL3-2x-DGX-Sparks, first published 2026-08-27, which precedes this
 repository. Copyright (c) 2026 Mia's AI Lab, MIT. See THIRD_PARTY_NOTICES.md.
 
 The EXL3 trellis format, the MCG codebook and the quantization method are
 ExLlamaV3's work by Turboderp (@turboderp), Copyright (c) 2025, MIT.
-"""
-
-# SPDX-License-Identifier: Apache-2.0
-"""EXL3/MCG trellis quantization for GLM-5.3-Flash routed experts.
 
 Checkpoint ABI used by this pack:
   quant_method=exl3, codebook=mcg, scope=glm53_routed_experts_only
@@ -46,13 +45,15 @@ if TYPE_CHECKING:
         SharedExperts,
     )
 
-logger = init_logger(__name__)
+# Under the "vllm." hierarchy so vLLM's logging config actually emits these
+# INFO lines; a bare module name is dropped and the load log shows nothing.
+logger = init_logger("vllm." + __name__)
 
 MCG_MULTIPLIER = 0xCBAC1FED
 MCG_MARKER_SIGNED_INT32 = -877912083
 EXL3_SUFFIXES = ("trellis", "suh", "svh", "mcg")
 SWIGLU_LIMIT_DEFAULT = 10.0
-TEMP_ROWS_FUSED = 128
+TEMP_ROWS_FUSED = 2048
 MOE_ACT_SILU = 0
 # Shared fused scratch: decode is sequential across layers.
 _FUSED_TEMP_CACHE: dict[tuple, tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = {}
@@ -323,6 +324,24 @@ def apply_exl3_fused_moe(
     xh = x2d.contiguous().half()
 
     counts = expert_count[:n_exp]
+
+    if tokens > TEMP_ROWS_FUSED and bool((counts > TEMP_ROWS_FUSED).any().item()):
+        logger.info_once("EXL3 fat-chunk slicing ACTIVE (tokens=%d)" % tokens)
+        # Deep-context prefill chunks can route more than TEMP_ROWS_FUSED rows
+        # to a single expert. The fused kernel covers at most TEMP_ROWS_FUSED
+        # rows per expert, and the old fallback reconstructed whole experts
+        # per chunk, stalling prefill by orders of magnitude past ~160k
+        # context (the ">163k hang"). Within a slice of <= TEMP_ROWS_FUSED
+        # tokens no expert can exceed TEMP_ROWS_FUSED rows (each token adds at
+        # most one row per expert), so re-run the fused path per slice.
+        # Prefill-only: decode batches are at most the largest capture size,
+        # far below TEMP_ROWS_FUSED, and never reach this host sync.
+        for s in range(0, tokens, TEMP_ROWS_FUSED):
+            e = min(s + TEMP_ROWS_FUSED, tokens)
+            out[s:e] = apply_exl3_fused_moe(
+                x2d[s:e], ids[s:e], weights[s:e], layer, inners, expert_map, limit
+            )
+        return out
     fn = exllamav3_ext.exl3_moe
     # -1 = unknown active count: max-concurrency grid, no .item() host sync.
     n_active_host = -1 if _exl3_moe_accepts_num_active(fn) else None
@@ -496,15 +515,18 @@ class Exl3Config(QuantizationConfig):
             "codebook",
             "scope",
             "quant_method",
-            # tr3 ships a 37 MiB per-tensor ledger; keep it off the config object.
+            # Some packs ship a large per-tensor ledger here; keep it off the config object.
             "tensor_storage",
         }
-        return cls(
+        inst = cls(
             bits=int(config.get("bits", 4)),
             codebook=str(config.get("codebook", "mcg")),
             scope=str(config.get("scope", "glm53_routed_experts_only")),
             **{k: v for k, v in config.items() if k not in skip},
         )
+        # __init__ swallows unknown kwargs; stash the delegation dict explicitly.
+        inst.non_routed_quantization = config.get("non_routed_quantization")
+        return inst
 
     @classmethod
     def override_quantization_method(
@@ -526,8 +548,35 @@ class Exl3Config(QuantizationConfig):
                 layer.moe_config, self, bits=self.bits_for_prefix(prefix)
             )
         if isinstance(layer, LinearBase):
+            d = self._non_routed_delegate()
+            if d is not None:
+                m = d.get_quant_method(layer, prefix)
+                if m is not None:
+                    return m
             return UnquantizedLinearMethod()
         return None
+
+    def _non_routed_delegate(self):
+        # Packs that keep non-routed weights in the official source format
+        # (e.g. DeepSeek block-FP8) declare it under
+        # ``quantization_config.non_routed_quantization``; delegate those
+        # layers to the matching quant method so arch-specific fp8 forward
+        # paths get real scale tensors. Absent key = unquantized (GLM).
+        if not hasattr(self, "_nr_delegate_cached"):
+            self._nr_delegate_cached = None
+            nrq = getattr(self, "non_routed_quantization", None)
+            if isinstance(nrq, dict) and nrq.get("quant_method"):
+                from vllm.model_executor.layers.quantization import (
+                    get_quantization_config,
+                )
+                for name in ("deepseek_v4_fp8", str(nrq.get("quant_method"))):
+                    try:
+                        cls = get_quantization_config(name)
+                        self._nr_delegate_cached = cls.from_config(dict(nrq))
+                        break
+                    except Exception:
+                        continue
+        return self._nr_delegate_cached
 
 
 class Exl3MoEMethod(FusedMoEMethodBase):

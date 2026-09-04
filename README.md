@@ -22,8 +22,9 @@ layers (24, 27, 35, 37, 42, 45) at K3, 2.14 bpw effective on the routed experts.
 |---|---|
 | **Pack** | [vcruz305/GLM-5.3-Flash-EXL3-K2K3-mix](https://huggingface.co/vcruz305/GLM-5.3-Flash-EXL3-K2K3-mix) — 120 shards |
 | **Runtime** | [vcruz305/GLM-5.3-Flash-EXL3-K2-spark-vllm](https://huggingface.co/vcruz305/GLM-5.3-Flash-EXL3-K2-spark-vllm) — prebuilt wheels; the plugin reads `layer_bits` |
+| **Plugin** | [vcruz305/vllm-exl3 >= 0.3.1](https://github.com/vcruz305/vllm-exl3/releases/tag/v0.3.1): canonical EXL3 quantization plugin (`--quantization exl3`) with native sm_121 Blackwell fused MoE and Super Fat GEMM prefill |
 | **K2 base recipe** | [GLM-5.3-Flash-EXL3-K2-DGX-Spark-recipe](https://github.com/vcruz305/GLM-5.3-Flash-EXL3-K2-DGX-Spark-recipe) |
-| Engine | vLLM, `--quantization exl3`, TP=1, native MTP k=2. **Stock vLLM cannot load this pack** |
+| Engine | vLLM + vllm-exl3 >= 0.3.1, `--quantization exl3`, TP=1, native MTP k=2. **Stock vLLM cannot load this pack** |
 
 ## Quick start
 
@@ -33,6 +34,12 @@ bash scripts/install_prebuilt.sh
 bash scripts/download_weights.sh
 python scripts/patch_chat_template_thinking.py ~/models/GLM-5.3-Flash-EXL3-K2K3-mix/chat_template.jinja
 SPEC_METHOD=mtp MTP_TOKENS=2 MAX_MODEL_LEN=65536 MAX_NUM_SEQS=1 bash scripts/serve_one_spark.sh
+```
+
+`bash scripts/install_prebuilt.sh` installs the verified runtime wheels and the canonical `vllm-exl3 >= 0.3.1` plugin.
+To install or upgrade the plugin independently:
+```bash
+pip install "vllm-exl3>=0.3.1"
 ```
 
 The load log must show `EXL3 per-layer K override ... bits=3` for the six K3 layers
